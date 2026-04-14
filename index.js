@@ -117,7 +117,15 @@ const server = http.createServer(async (req, res) => {
         return json(200, detalhe);
       } catch (e) { return json(500, { erro: e.message }); }
     }
+if (method === 'GET' && pathname === '/debug/ml-token') {
+      try {
+        const fs = require('fs');
+        const raw = JSON.parse(fs.readFileSync('/data/ml_tokens.json', 'utf8'));
+        return json(200, { tem_access_token: !!raw.access_token, tem_refresh_token: !!raw.refresh_token, chaves: Object.keys(raw) });
+      } catch (e) { return json(500, { erro: e.message }); }
+    }
 
+    return json(404, { erro: `Rota não encontrada: ${method} ${pathname}` });
     return json(404, { erro: `Rota não encontrada: ${method} ${pathname}` });
 
   } catch (e) {
