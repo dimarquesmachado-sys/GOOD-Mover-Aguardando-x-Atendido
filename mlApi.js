@@ -20,21 +20,14 @@ async function getShipmentId(token, numeroPedidoLoja) {
   return shipmentId;
 }
 
-async function getSubstatus(token, shipmentId) {
-  const resp = await fetch(`${ML_API}/shipments/${shipmentId}`, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  if (!resp.ok) {
-    const txt = await resp.text();
-    throw new Error(`ML shipment ${shipmentId} erro ${resp.status}: ${txt.slice(0, 200)}`);
-  }
-  const data = await resp.json();
-  return data?.substatus || null;
-}
-
 /**
- * Consulta o substatus de um pedido ML pelo numeroLoja (= ID do pedido ML).
- * Retorna: 'buffered' = sem etiqueta | outro valor = tem etiqueta | null = erro
+ * Consulta o substatus de um pedido ML pelo numeroLoja.
+ * Retorna: 'buffered' = sem etiqueta | qualquer outro valor = tem etiqueta | null = erro
+ * 
+ * Lógica:
+ * - Se status === 'ready_to_ship' → etiqueta disponível (independente do substatus)
+ * - Se substatus !== 'buffered' → etiqueta disponível
+ * - Se substatus === 'buffered' E status !== 'ready_to_ship' → sem etiqueta
  */
 async function consultarSubstatusShipment(token, numeroPedidoLoja, retries = 3) {
   for (let attempt = 1; attempt <= retries; attempt++) {
@@ -42,9 +35,29 @@ async function consultarSubstatusShipment(token, numeroPedidoLoja, retries = 3) 
       await sleep(300);
       const shipmentId = await getShipmentId(token, numeroPedidoLoja);
       await sleep(300);
-      const substatus = await getSubstatus(token, shipmentId);
-      console.log(`[mlApi] Pedido ML ${numeroPedidoLoja} → shipment ${shipmentId} → substatus: ${substatus}`);
+
+      const resp = await fetch(`${ML_API}/shipments/${shipmentId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (!resp.ok) {
+        const txt = await resp.text();
+        throw new Error(`ML shipment ${shipmentId} erro ${resp.status}: ${txt.slice(0, 200)}`);
+      }
+
+      const data = await resp.json();
+      const status = data?.status || null;
+      const substatus = data?.substatus || null;
+
+      console.log(`[mlApi] Pedido ML ${numeroPedidoLoja} → shipment ${shipmentId} → status: ${status} | substatus: ${substatus}`);
+
+      // Se status indica que está pronto para envio, tem etiqueta
+      if (status === 'ready_to_ship') {
+        return 'ready_to_ship';
+      }
+
       return substatus;
+
     } catch (e) {
       if (e.message.includes('429') && attempt < retries) {
         await sleep(attempt * 2000);
